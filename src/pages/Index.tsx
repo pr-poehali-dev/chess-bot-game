@@ -178,6 +178,8 @@ function getLegalMoves(
   return moves;
 }
 
+interface PromotionState { row: number; col: number; color: "white" | "black"; board: string[][]; cr: CastleRights; ep: [number, number] | null; }
+
 function ChessBoard() {
   const [selected, setSelected] = useState<[number, number] | null>(null);
   const [legalMoves, setLegalMoves] = useState<[number, number][]>([]);
@@ -185,11 +187,30 @@ function ChessBoard() {
   const [turn, setTurn] = useState<"white" | "black">("white");
   const [castleRights, setCastleRights] = useState<CastleRights>({ wK: true, wQ: true, bK: true, bQ: true });
   const [enPassant, setEnPassant] = useState<[number, number] | null>(null);
+  const [promotion, setPromotion] = useState<PromotionState | null>(null);
 
   const isWhitePiece = (p: string) => p !== "" && p === p.toUpperCase();
   const isBlackPiece = (p: string) => p !== "" && p === p.toLowerCase();
 
+  const finishMove = (newBoard: string[][], cr: CastleRights, newEP: [number, number] | null, nextTurn: "white" | "black") => {
+    setBoard(newBoard);
+    setCastleRights(cr);
+    setEnPassant(newEP);
+    setSelected(null);
+    setLegalMoves([]);
+    setTurn(nextTurn);
+  };
+
+  const handlePromotion = (piece: string) => {
+    if (!promotion) return;
+    const newBoard = promotion.board.map(r => [...r]);
+    newBoard[promotion.row][promotion.col] = piece;
+    setPromotion(null);
+    finishMove(newBoard, promotion.cr, promotion.ep, promotion.color === "white" ? "black" : "white");
+  };
+
   const handleClick = (row: number, col: number) => {
+    if (promotion) return;
     const piece = board[row][col];
     if (!selected) {
       if ((turn === "white" && isWhitePiece(piece)) || (turn === "black" && isBlackPiece(piece))) {
@@ -241,12 +262,15 @@ function ChessBoard() {
       newEP = [(sr + row) / 2, col];
     }
 
-    setBoard(newBoard);
-    setCastleRights(cr);
-    setEnPassant(newEP);
-    setSelected(null);
-    setLegalMoves([]);
-    setTurn(turn === "white" ? "black" : "white");
+    // Превращение пешки
+    if ((srcPiece === "P" && row === 0) || (srcPiece === "p" && row === 7)) {
+      setSelected(null);
+      setLegalMoves([]);
+      setPromotion({ row, col, color: turn, board: newBoard, cr, ep: newEP });
+      return;
+    }
+
+    finishMove(newBoard, cr, newEP, turn === "white" ? "black" : "white");
   };
 
   const CELL = 52;
@@ -349,7 +373,7 @@ function ChessBoard() {
       </div>
       <div style={{ display: "flex", gap: "12px" }}>
         <button
-          onClick={() => { setBoard(INITIAL_BOARD.map(r => [...r])); setSelected(null); setLegalMoves([]); setTurn("white"); setCastleRights({ wK: true, wQ: true, bK: true, bQ: true }); setEnPassant(null); }}
+          onClick={() => { setBoard(INITIAL_BOARD.map(r => [...r])); setSelected(null); setLegalMoves([]); setTurn("white"); setCastleRights({ wK: true, wQ: true, bK: true, bQ: true }); setEnPassant(null); setPromotion(null); }}
           className="wood-btn-sm"
         >
           <Icon name="RotateCcw" size={14} /> Сбросить
@@ -358,6 +382,76 @@ function ChessBoard() {
           <Icon name="BarChart2" size={14} /> Анализ
         </button>
       </div>
+
+      {/* Модальное окно превращения пешки */}
+      {promotion && (() => {
+        const isWhite = promotion.color === "white";
+        const pieces = isWhite
+          ? [{ p: "Q", sym: "♕", label: "Ферзь" }, { p: "R", sym: "♖", label: "Ладья" }, { p: "B", sym: "♗", label: "Слон" }, { p: "N", sym: "♘", label: "Конь" }]
+          : [{ p: "q", sym: "♛", label: "Ферзь" }, { p: "r", sym: "♜", label: "Ладья" }, { p: "b", sym: "♝", label: "Слон" }, { p: "n", sym: "♞", label: "Конь" }];
+        return (
+          <div style={{
+            position: "fixed", inset: 0, zIndex: 1000,
+            background: "rgba(0,0,0,0.75)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <div style={{
+              background: "linear-gradient(135deg, #2d1a0a, #1a0e05)",
+              border: "2px solid var(--gold-dark)",
+              borderRadius: "12px",
+              padding: "32px 28px",
+              boxShadow: "0 16px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(201,162,39,0.2)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "20px",
+            }}>
+              <div style={{ fontFamily: "var(--font-cormorant)", fontSize: "22px", color: "var(--gold-light)", fontWeight: 600 }}>
+                Превращение пешки
+              </div>
+              <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>Выберите фигуру</div>
+              <div style={{ display: "flex", gap: "12px" }}>
+                {pieces.map(({ p, sym, label }) => (
+                  <button
+                    key={p}
+                    onClick={() => handlePromotion(p)}
+                    style={{
+                      width: "76px", height: "88px",
+                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "6px",
+                      background: "linear-gradient(135deg, rgba(74,44,20,0.8), rgba(45,26,10,0.9))",
+                      border: "1px solid var(--wood-border)",
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                      color: isWhite ? "#f5e6c8" : "#1a0e05",
+                    }}
+                    onMouseEnter={e => {
+                      (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--gold)";
+                      (e.currentTarget as HTMLButtonElement).style.background = "linear-gradient(135deg, rgba(107,61,26,0.9), rgba(74,44,20,0.95))";
+                      (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-2px)";
+                      (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 4px 16px rgba(201,162,39,0.3)";
+                    }}
+                    onMouseLeave={e => {
+                      (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--wood-border)";
+                      (e.currentTarget as HTMLButtonElement).style.background = "linear-gradient(135deg, rgba(74,44,20,0.8), rgba(45,26,10,0.9))";
+                      (e.currentTarget as HTMLButtonElement).style.transform = "translateY(0)";
+                      (e.currentTarget as HTMLButtonElement).style.boxShadow = "none";
+                    }}
+                  >
+                    <span style={{
+                      fontSize: "40px", lineHeight: 1,
+                      filter: isWhite ? "drop-shadow(0 1px 3px rgba(0,0,0,0.9))" : "drop-shadow(0 1px 2px rgba(0,0,0,0.4))",
+                      color: isWhite ? "#f5e6c8" : "#1a0e05",
+                      WebkitTextStroke: isWhite ? undefined : "0.5px #c9a227",
+                    }}>{sym}</span>
+                    <span style={{ fontSize: "11px", color: "var(--gold-muted)", fontFamily: "var(--font-golos)" }}>{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
