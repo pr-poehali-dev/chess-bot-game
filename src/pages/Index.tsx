@@ -120,9 +120,11 @@ function getLegalMoves(board: string[][], row: number, col: number): [number, nu
       }
     }
   };
-  const jump = (targets: [number, number][]) => {
-    for (const [r, c] of targets)
+  const jump = (deltas: [number, number][]) => {
+    for (const [dr, dc] of deltas) {
+      const r = row + dr, c = col + dc;
       if (inBounds(r, c) && !friendly(board[r][c])) moves.push([r, c]);
+    }
   };
 
   const p = piece.toLowerCase();
