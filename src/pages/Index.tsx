@@ -99,7 +99,15 @@ const RULES_DATA = [
   },
 ];
 
-function getLegalMoves(board: string[][], row: number, col: number): [number, number][] {
+interface CastleRights { wK: boolean; wQ: boolean; bK: boolean; bQ: boolean; }
+
+function getLegalMoves(
+  board: string[][],
+  row: number,
+  col: number,
+  castleRights: CastleRights,
+  enPassant: [number, number] | null,
+): [number, number][] {
   const piece = board[row][col];
   if (!piece) return [];
   const isW = (p: string) => p !== "" && p === p.toUpperCase();
@@ -132,8 +140,25 @@ function getLegalMoves(board: string[][], row: number, col: number): [number, nu
   if (p === "r") slide([-1,1,0,0],[0,0,-1,1]);
   if (p === "b") slide([-1,-1,1,1],[-1,1,-1,1]);
   if (p === "q") { slide([-1,1,0,0],[0,0,-1,1]); slide([-1,-1,1,1],[-1,1,-1,1]); }
-  if (p === "k") jump([[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]);
   if (p === "n") jump([[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]);
+
+  if (p === "k") {
+    jump([[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]);
+    // Рокировка
+    if (isW(piece) && row === 7 && col === 4) {
+      if (castleRights.wK && !board[7][5] && !board[7][6] && board[7][7] === "R")
+        moves.push([7, 6]);
+      if (castleRights.wQ && !board[7][3] && !board[7][2] && !board[7][1] && board[7][0] === "R")
+        moves.push([7, 2]);
+    }
+    if (isB(piece) && row === 0 && col === 4) {
+      if (castleRights.bK && !board[0][5] && !board[0][6] && board[0][7] === "r")
+        moves.push([0, 6]);
+      if (castleRights.bQ && !board[0][3] && !board[0][2] && !board[0][1] && board[0][0] === "r")
+        moves.push([0, 2]);
+    }
+  }
+
   if (p === "p") {
     const dir = isW(piece) ? -1 : 1;
     const startRow = isW(piece) ? 6 : 1;
@@ -141,10 +166,15 @@ function getLegalMoves(board: string[][], row: number, col: number): [number, nu
       moves.push([row+dir, col]);
       if (row === startRow && !board[row+2*dir][col]) moves.push([row+2*dir, col]);
     }
-    for (const dc of [-1, 1])
-      if (inBounds(row+dir, col+dc) && enemy(board[row+dir][col+dc]))
+    for (const dc of [-1, 1]) {
+      if (!inBounds(row+dir, col+dc)) continue;
+      if (enemy(board[row+dir][col+dc])) moves.push([row+dir, col+dc]);
+      // Взятие на проходе
+      if (enPassant && enPassant[0] === row+dir && enPassant[1] === col+dc)
         moves.push([row+dir, col+dc]);
+    }
   }
+
   return moves;
 }
 
@@ -153,6 +183,8 @@ function ChessBoard() {
   const [legalMoves, setLegalMoves] = useState<[number, number][]>([]);
   const [board, setBoard] = useState(INITIAL_BOARD.map(r => [...r]));
   const [turn, setTurn] = useState<"white" | "black">("white");
+  const [castleRights, setCastleRights] = useState<CastleRights>({ wK: true, wQ: true, bK: true, bQ: true });
+  const [enPassant, setEnPassant] = useState<[number, number] | null>(null);
 
   const isWhitePiece = (p: string) => p !== "" && p === p.toUpperCase();
   const isBlackPiece = (p: string) => p !== "" && p === p.toLowerCase();
@@ -162,7 +194,7 @@ function ChessBoard() {
     if (!selected) {
       if ((turn === "white" && isWhitePiece(piece)) || (turn === "black" && isBlackPiece(piece))) {
         setSelected([row, col]);
-        setLegalMoves(getLegalMoves(board, row, col));
+        setLegalMoves(getLegalMoves(board, row, col, castleRights, enPassant));
       }
       return;
     }
@@ -172,15 +204,46 @@ function ChessBoard() {
     const dstPiece = board[row][col];
     if ((turn === "white" && isWhitePiece(dstPiece)) || (turn === "black" && isBlackPiece(dstPiece))) {
       setSelected([row, col]);
-      setLegalMoves(getLegalMoves(board, row, col));
+      setLegalMoves(getLegalMoves(board, row, col, castleRights, enPassant));
       return;
     }
     const isLegal = legalMoves.some(([r, c]) => r === row && c === col);
     if (!isLegal) { setSelected(null); setLegalMoves([]); return; }
+
     const newBoard = board.map(r => [...r]);
     newBoard[row][col] = srcPiece;
     newBoard[sr][sc] = "";
+
+    // Рокировка — двигаем ладью
+    if (srcPiece.toLowerCase() === "k" && Math.abs(col - sc) === 2) {
+      if (col === 6) { newBoard[row][5] = newBoard[row][7]; newBoard[row][7] = ""; }
+      if (col === 2) { newBoard[row][3] = newBoard[row][0]; newBoard[row][0] = ""; }
+    }
+
+    // Взятие на проходе — убираем пешку
+    if (srcPiece.toLowerCase() === "p" && enPassant && row === enPassant[0] && col === enPassant[1]) {
+      const capturedRow = turn === "white" ? row + 1 : row - 1;
+      newBoard[capturedRow][col] = "";
+    }
+
+    // Обновляем права на рокировку
+    const cr = { ...castleRights };
+    if (srcPiece === "K") { cr.wK = false; cr.wQ = false; }
+    if (srcPiece === "k") { cr.bK = false; cr.bQ = false; }
+    if (srcPiece === "R" && sr === 7 && sc === 7) cr.wK = false;
+    if (srcPiece === "R" && sr === 7 && sc === 0) cr.wQ = false;
+    if (srcPiece === "r" && sr === 0 && sc === 7) cr.bK = false;
+    if (srcPiece === "r" && sr === 0 && sc === 0) cr.bQ = false;
+
+    // Взятие на проходе — запоминаем клетку
+    let newEP: [number, number] | null = null;
+    if (srcPiece.toLowerCase() === "p" && Math.abs(row - sr) === 2) {
+      newEP = [(sr + row) / 2, col];
+    }
+
     setBoard(newBoard);
+    setCastleRights(cr);
+    setEnPassant(newEP);
     setSelected(null);
     setLegalMoves([]);
     setTurn(turn === "white" ? "black" : "white");
@@ -286,7 +349,7 @@ function ChessBoard() {
       </div>
       <div style={{ display: "flex", gap: "12px" }}>
         <button
-          onClick={() => { setBoard(INITIAL_BOARD.map(r => [...r])); setSelected(null); setTurn("white"); }}
+          onClick={() => { setBoard(INITIAL_BOARD.map(r => [...r])); setSelected(null); setLegalMoves([]); setTurn("white"); setCastleRights({ wK: true, wQ: true, bK: true, bQ: true }); setEnPassant(null); }}
           className="wood-btn-sm"
         >
           <Icon name="RotateCcw" size={14} /> Сбросить
