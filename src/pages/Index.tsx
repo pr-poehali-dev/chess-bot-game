@@ -99,8 +99,56 @@ const RULES_DATA = [
   },
 ];
 
+function getLegalMoves(board: string[][], row: number, col: number): [number, number][] {
+  const piece = board[row][col];
+  if (!piece) return [];
+  const isW = (p: string) => p !== "" && p === p.toUpperCase();
+  const isB = (p: string) => p !== "" && p === p.toLowerCase();
+  const friendly = isW(piece) ? isW : isB;
+  const enemy    = isW(piece) ? isB : isW;
+  const moves: [number, number][] = [];
+  const inBounds = (r: number, c: number) => r >= 0 && r < 8 && c >= 0 && c < 8;
+
+  const slide = (drs: number[], dcs: number[]) => {
+    for (let i = 0; i < drs.length; i++) {
+      let r = row + drs[i], c = col + dcs[i];
+      while (inBounds(r, c)) {
+        if (friendly(board[r][c])) break;
+        moves.push([r, c]);
+        if (enemy(board[r][c])) break;
+        r += drs[i]; c += dcs[i];
+      }
+    }
+  };
+  const jump = (targets: [number, number][]) => {
+    for (const [r, c] of targets)
+      if (inBounds(r, c) && !friendly(board[r][c])) moves.push([r, c]);
+  };
+
+  const p = piece.toLowerCase();
+
+  if (p === "r") slide([-1,1,0,0],[0,0,-1,1]);
+  if (p === "b") slide([-1,-1,1,1],[-1,1,-1,1]);
+  if (p === "q") { slide([-1,1,0,0],[0,0,-1,1]); slide([-1,-1,1,1],[-1,1,-1,1]); }
+  if (p === "k") jump([[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]);
+  if (p === "n") jump([[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]);
+  if (p === "p") {
+    const dir = isW(piece) ? -1 : 1;
+    const startRow = isW(piece) ? 6 : 1;
+    if (inBounds(row+dir, col) && !board[row+dir][col]) {
+      moves.push([row+dir, col]);
+      if (row === startRow && !board[row+2*dir][col]) moves.push([row+2*dir, col]);
+    }
+    for (const dc of [-1, 1])
+      if (inBounds(row+dir, col+dc) && enemy(board[row+dir][col+dc]))
+        moves.push([row+dir, col+dc]);
+  }
+  return moves;
+}
+
 function ChessBoard() {
   const [selected, setSelected] = useState<[number, number] | null>(null);
+  const [legalMoves, setLegalMoves] = useState<[number, number][]>([]);
   const [board, setBoard] = useState(INITIAL_BOARD.map(r => [...r]));
   const [turn, setTurn] = useState<"white" | "black">("white");
 
@@ -112,21 +160,27 @@ function ChessBoard() {
     if (!selected) {
       if ((turn === "white" && isWhitePiece(piece)) || (turn === "black" && isBlackPiece(piece))) {
         setSelected([row, col]);
+        setLegalMoves(getLegalMoves(board, row, col));
       }
       return;
     }
     const [sr, sc] = selected;
-    if (sr === row && sc === col) { setSelected(null); return; }
+    if (sr === row && sc === col) { setSelected(null); setLegalMoves([]); return; }
     const srcPiece = board[sr][sc];
     const dstPiece = board[row][col];
     if ((turn === "white" && isWhitePiece(dstPiece)) || (turn === "black" && isBlackPiece(dstPiece))) {
-      setSelected([row, col]); return;
+      setSelected([row, col]);
+      setLegalMoves(getLegalMoves(board, row, col));
+      return;
     }
+    const isLegal = legalMoves.some(([r, c]) => r === row && c === col);
+    if (!isLegal) { setSelected(null); setLegalMoves([]); return; }
     const newBoard = board.map(r => [...r]);
     newBoard[row][col] = srcPiece;
     newBoard[sr][sc] = "";
     setBoard(newBoard);
     setSelected(null);
+    setLegalMoves([]);
     setTurn(turn === "white" ? "black" : "white");
   };
 
@@ -160,6 +214,8 @@ function ChessBoard() {
               row.map((piece, ci) => {
                 const isLight = (ri + ci) % 2 === 0;
                 const isSel = selected && selected[0] === ri && selected[1] === ci;
+                const isLegal = legalMoves.some(([r, c]) => r === ri && c === ci);
+                const isCapture = isLegal && piece !== "";
                 return (
                   <div
                     key={`${ri}-${ci}`}
@@ -171,8 +227,9 @@ function ChessBoard() {
                         ? "var(--gold-highlight)"
                         : isLight ? "var(--cell-light)" : "var(--cell-dark)",
                       display: "flex", alignItems: "center", justifyContent: "center",
-                      cursor: "pointer",
+                      cursor: isLegal ? "pointer" : "default",
                       transition: "background 0.15s",
+                      position: "relative",
                     }}
                   >
                     {piece && (
@@ -180,6 +237,8 @@ function ChessBoard() {
                         fontSize: "32px",
                         lineHeight: 1,
                         userSelect: "none",
+                        position: "relative",
+                        zIndex: 1,
                         filter: isWhitePiece(piece)
                           ? "drop-shadow(0 1px 2px rgba(0,0,0,0.8))"
                           : "drop-shadow(0 1px 2px rgba(0,0,0,0.4))",
@@ -187,6 +246,29 @@ function ChessBoard() {
                       }}>
                         {PIECES[piece]}
                       </span>
+                    )}
+                    {isLegal && !isCapture && (
+                      <div style={{
+                        position: "absolute",
+                        width: "34%",
+                        height: "34%",
+                        borderRadius: "50%",
+                        background: "rgba(50, 180, 80, 0.75)",
+                        boxShadow: "0 0 6px rgba(50,180,80,0.5)",
+                        pointerEvents: "none",
+                        zIndex: 2,
+                      }} />
+                    )}
+                    {isCapture && (
+                      <div style={{
+                        position: "absolute",
+                        inset: 0,
+                        borderRadius: "50%",
+                        border: "4px solid rgba(50, 180, 80, 0.8)",
+                        boxShadow: "inset 0 0 6px rgba(50,180,80,0.4)",
+                        pointerEvents: "none",
+                        zIndex: 2,
+                      }} />
                     )}
                   </div>
                 );
