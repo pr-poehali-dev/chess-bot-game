@@ -130,23 +130,27 @@ function ChessBoard() {
     setTurn(turn === "white" ? "black" : "white");
   };
 
+  const CELL = 52;
+  const BOARD = CELL * 8;
+
   return (
     <div className="flex flex-col items-center gap-4">
       <div className="text-sm font-golos tracking-widest uppercase" style={{ color: "var(--gold-light)" }}>
         Ход: {turn === "white" ? "Белые ♔" : "Чёрные ♚"}
       </div>
       <div style={{ display: "flex", alignItems: "flex-start", gap: "4px" }}>
-        <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-around", height: "clamp(240px,40vw,400px)", paddingBottom: "24px" }}>
+        <div style={{ display: "flex", flexDirection: "column", height: BOARD, paddingBottom: "0" }}>
           {[8,7,6,5,4,3,2,1].map(n => (
-            <div key={n} style={{ color: "var(--gold-muted)", fontSize: "11px", fontFamily: "var(--font-golos)", width: "16px", textAlign: "center" }}>{n}</div>
+            <div key={n} style={{ height: CELL, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--gold-muted)", fontSize: "11px", fontFamily: "var(--font-golos)", width: "18px" }}>{n}</div>
           ))}
         </div>
         <div>
           <div style={{
             display: "grid",
-            gridTemplateColumns: "repeat(8, 1fr)",
-            width: "clamp(240px,40vw,400px)",
-            height: "clamp(240px,40vw,400px)",
+            gridTemplateColumns: `repeat(8, ${CELL}px)`,
+            gridTemplateRows: `repeat(8, ${CELL}px)`,
+            width: BOARD,
+            height: BOARD,
             border: "3px solid var(--wood-border)",
             boxShadow: "0 8px 32px rgba(0,0,0,0.5), inset 0 0 0 2px var(--gold-dark)",
             borderRadius: "4px",
@@ -161,18 +165,19 @@ function ChessBoard() {
                     key={`${ri}-${ci}`}
                     onClick={() => handleClick(ri, ci)}
                     style={{
+                      width: CELL,
+                      height: CELL,
                       background: isSel
                         ? "var(--gold-highlight)"
                         : isLight ? "var(--cell-light)" : "var(--cell-dark)",
                       display: "flex", alignItems: "center", justifyContent: "center",
                       cursor: "pointer",
                       transition: "background 0.15s",
-                      position: "relative",
                     }}
                   >
                     {piece && (
                       <span style={{
-                        fontSize: "clamp(18px,3vw,28px)",
+                        fontSize: "32px",
                         lineHeight: 1,
                         userSelect: "none",
                         filter: isWhitePiece(piece)
@@ -188,9 +193,9 @@ function ChessBoard() {
               })
             )}
           </div>
-          <div style={{ display: "flex", justifyContent: "space-around", width: "clamp(240px,40vw,400px)", paddingTop: "4px" }}>
+          <div style={{ display: "flex", width: BOARD, paddingTop: "4px" }}>
             {["a","b","c","d","e","f","g","h"].map(l => (
-              <div key={l} style={{ color: "var(--gold-muted)", fontSize: "11px", fontFamily: "var(--font-golos)", textAlign: "center", flex: 1 }}>{l}</div>
+              <div key={l} style={{ width: CELL, color: "var(--gold-muted)", fontSize: "11px", fontFamily: "var(--font-golos)", textAlign: "center" }}>{l}</div>
             ))}
           </div>
         </div>
