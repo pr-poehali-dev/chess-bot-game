@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Icon from "@/components/ui/icon";
 
 type Section = "home" | "game" | "stats" | "lessons" | "rules";
@@ -245,9 +245,275 @@ function castlePathSafe(board: string[][], row: number, cols: number[], byWhite:
   return cols.every(c => !isSquareAttacked(board, row, c, byWhite));
 }
 
+// ─── Движок бота ─────────────────────────────────────────────────────��────────
+
+const PIECE_VALUES: Record<string, number> = { p:100, n:320, b:330, r:500, q:900, k:20000 };
+
+// Таблицы позиционных бонусов (с точки зрения белых, для чёрных переворачиваем)
+const PST: Record<string, number[]> = {
+  p: [ 0,  0,  0,  0,  0,  0,  0,  0,
+      50, 50, 50, 50, 50, 50, 50, 50,
+      10, 10, 20, 30, 30, 20, 10, 10,
+       5,  5, 10, 25, 25, 10,  5,  5,
+       0,  0,  0, 20, 20,  0,  0,  0,
+       5, -5,-10,  0,  0,-10, -5,  5,
+       5, 10, 10,-20,-20, 10, 10,  5,
+       0,  0,  0,  0,  0,  0,  0,  0],
+  n: [-50,-40,-30,-30,-30,-30,-40,-50,
+      -40,-20,  0,  0,  0,  0,-20,-40,
+      -30,  0, 10, 15, 15, 10,  0,-30,
+      -30,  5, 15, 20, 20, 15,  5,-30,
+      -30,  0, 15, 20, 20, 15,  0,-30,
+      -30,  5, 10, 15, 15, 10,  5,-30,
+      -40,-20,  0,  5,  5,  0,-20,-40,
+      -50,-40,-30,-30,-30,-30,-40,-50],
+  b: [-20,-10,-10,-10,-10,-10,-10,-20,
+      -10,  0,  0,  0,  0,  0,  0,-10,
+      -10,  0,  5, 10, 10,  5,  0,-10,
+      -10,  5,  5, 10, 10,  5,  5,-10,
+      -10,  0, 10, 10, 10, 10,  0,-10,
+      -10, 10, 10, 10, 10, 10, 10,-10,
+      -10,  5,  0,  0,  0,  0,  5,-10,
+      -20,-10,-10,-10,-10,-10,-10,-20],
+  r: [  0,  0,  0,  0,  0,  0,  0,  0,
+        5, 10, 10, 10, 10, 10, 10,  5,
+       -5,  0,  0,  0,  0,  0,  0, -5,
+       -5,  0,  0,  0,  0,  0,  0, -5,
+       -5,  0,  0,  0,  0,  0,  0, -5,
+       -5,  0,  0,  0,  0,  0,  0, -5,
+       -5,  0,  0,  0,  0,  0,  0, -5,
+        0,  0,  0,  5,  5,  0,  0,  0],
+  q: [-20,-10,-10, -5, -5,-10,-10,-20,
+      -10,  0,  0,  0,  0,  0,  0,-10,
+      -10,  0,  5,  5,  5,  5,  0,-10,
+       -5,  0,  5,  5,  5,  5,  0, -5,
+        0,  0,  5,  5,  5,  5,  0, -5,
+      -10,  5,  5,  5,  5,  5,  0,-10,
+      -10,  0,  5,  0,  0,  0,  0,-10,
+      -20,-10,-10, -5, -5,-10,-10,-20],
+  k: [ 30, 40, 40, 50, 50, 40, 40, 30,
+       30, 40, 40, 50, 50, 40, 40, 30,
+       30, 40, 40, 50, 50, 40, 40, 30,
+       30, 40, 40, 50, 50, 40, 40, 30,
+       20, 30, 30, 40, 40, 30, 30, 20,
+       10, 20, 20, 20, 20, 20, 20, 10,
+      -20,-20,  0,  0,  0,  0,-20,-20,
+      -30,-40,-40,-50,-50,-40,-40,-30],
+};
+
+function evaluateBoard(board: string[][]): number {
+  let score = 0;
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const p = board[r][c];
+      if (!p) continue;
+      const isW = p === p.toUpperCase();
+      const key = p.toLowerCase();
+      const val = PIECE_VALUES[key] ?? 0;
+      const pstRow = isW ? r : 7 - r;
+      const pst = PST[key] ? PST[key][pstRow * 8 + c] : 0;
+      score += isW ? (val + pst) : -(val + pst);
+    }
+  }
+  return score;
+}
+
+interface BotMove { sr: number; sc: number; dr: number; dc: number; promo?: string; }
+
+function getAllMoves(board: string[][], cr: CastleRights, ep: [number,number]|null, forWhite: boolean): BotMove[] {
+  const moves: BotMove[] = [];
+  const isW = (p: string) => p !== "" && p === p.toUpperCase();
+  const isB = (p: string) => p !== "" && p === p.toLowerCase();
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const p = board[r][c];
+      if (!p) continue;
+      if (forWhite && !isW(p)) continue;
+      if (!forWhite && !isB(p)) continue;
+      const targets = getLegalMoves(board, r, c, cr, ep);
+      for (const [dr, dc] of targets) {
+        // Фильтр — не оставляем короля под шахом
+        if (isInCheckAfterMove(board, r, c, dr, dc, forWhite ? "white" : "black")) continue;
+        // Рокировка через атакованные поля
+        if (p.toLowerCase() === "k" && Math.abs(dc - c) === 2) {
+          const passCol = dc === 6 ? [c, 5, 6] : [c, 3, 2];
+          if (!castlePathSafe(board, r, passCol, forWhite)) continue;
+        }
+        // Превращение
+        if ((p === "P" && dr === 0) || (p === "p" && dr === 7)) {
+          for (const promo of (forWhite ? ["Q","R","B","N"] : ["q","r","b","n"]))
+            moves.push({ sr: r, sc: c, dr, dc, promo });
+        } else {
+          moves.push({ sr: r, sc: c, dr, dc });
+        }
+      }
+    }
+  }
+  return moves;
+}
+
+function applyMove(board: string[][], cr: CastleRights, ep: [number,number]|null, m: BotMove): { board: string[][], cr: CastleRights, ep: [number,number]|null } {
+  const b = board.map(r => [...r]);
+  const piece = b[m.sr][m.sc];
+  b[m.dr][m.dc] = m.promo ?? piece;
+  b[m.sr][m.sc] = "";
+  // Рокировка
+  if (piece.toLowerCase() === "k" && Math.abs(m.dc - m.sc) === 2) {
+    if (m.dc === 6) { b[m.dr][5] = b[m.dr][7]; b[m.dr][7] = ""; }
+    if (m.dc === 2) { b[m.dr][3] = b[m.dr][0]; b[m.dr][0] = ""; }
+  }
+  // Взятие на проходе
+  if (piece.toLowerCase() === "p" && ep && m.dr === ep[0] && m.dc === ep[1]) {
+    const capRow = piece === "P" ? m.dr + 1 : m.dr - 1;
+    b[capRow][m.dc] = "";
+  }
+  const newCr = { ...cr };
+  if (piece === "K") { newCr.wK = false; newCr.wQ = false; }
+  if (piece === "k") { newCr.bK = false; newCr.bQ = false; }
+  if (piece === "R" && m.sr === 7 && m.sc === 7) newCr.wK = false;
+  if (piece === "R" && m.sr === 7 && m.sc === 0) newCr.wQ = false;
+  if (piece === "r" && m.sr === 0 && m.sc === 7) newCr.bK = false;
+  if (piece === "r" && m.sr === 0 && m.sc === 0) newCr.bQ = false;
+  let newEP: [number,number]|null = null;
+  if (piece.toLowerCase() === "p" && Math.abs(m.dr - m.sr) === 2)
+    newEP = [(m.sr + m.dr) / 2, m.dc];
+  return { board: b, cr: newCr, ep: newEP };
+}
+
+// Сортировка ходов для alpha-beta (взятия вперёд)
+function scoreMoveOrder(board: string[][], m: BotMove): number {
+  const victim = board[m.dr][m.dc];
+  const aggressor = board[m.sr][m.sc];
+  if (!victim) return 0;
+  return (PIECE_VALUES[victim.toLowerCase()] ?? 0) - (PIECE_VALUES[aggressor.toLowerCase()] ?? 0) / 10;
+}
+
+function minimax(
+  board: string[][], cr: CastleRights, ep: [number,number]|null,
+  depth: number, alpha: number, beta: number, maximizing: boolean
+): number {
+  if (depth === 0) return evaluateBoard(board);
+  const moves = getAllMoves(board, cr, ep, maximizing);
+  if (moves.length === 0) {
+    const kPos = findKing(board, maximizing);
+    if (kPos && isSquareAttacked(board, kPos[0], kPos[1], !maximizing)) return maximizing ? -99999 : 99999;
+    return 0; // пат
+  }
+  moves.sort((a, b) => scoreMoveOrder(board, b) - scoreMoveOrder(board, a));
+  if (maximizing) {
+    let best = -Infinity;
+    for (const m of moves) {
+      const { board: nb, cr: ncr, ep: nep } = applyMove(board, cr, ep, m);
+      best = Math.max(best, minimax(nb, ncr, nep, depth - 1, alpha, beta, false));
+      alpha = Math.max(alpha, best);
+      if (beta <= alpha) break;
+    }
+    return best;
+  } else {
+    let best = Infinity;
+    for (const m of moves) {
+      const { board: nb, cr: ncr, ep: nep } = applyMove(board, cr, ep, m);
+      best = Math.min(best, minimax(nb, ncr, nep, depth - 1, alpha, beta, true));
+      beta = Math.min(beta, best);
+      if (beta <= alpha) break;
+    }
+    return best;
+  }
+}
+
+// depth и шум по уровням: 1-Новичок, 2-Любитель, 3-Опытный, 4-Эксперт, 5-Мастер
+const LEVEL_CONFIG = [
+  { depth: 1, noise: 400, randomTop: 8 },  // Новичок
+  { depth: 2, noise: 150, randomTop: 4 },  // Любитель
+  { depth: 3, noise: 50,  randomTop: 2 },  // Опытный
+  { depth: 4, noise: 10,  randomTop: 1 },  // Эксперт
+  { depth: 5, noise: 0,   randomTop: 1 },  // Мастер
+];
+
+function getBotMove(board: string[][], cr: CastleRights, ep: [number,number]|null, level: number): BotMove | null {
+  const cfg = LEVEL_CONFIG[level - 1];
+  const moves = getAllMoves(board, cr, ep, false); // бот играет чёрными
+  if (moves.length === 0) return null;
+  moves.sort((a, b) => scoreMoveOrder(board, b) - scoreMoveOrder(board, a));
+
+  // Для низких уровней — случайный выбор из топ-N
+  if (cfg.randomTop > 1) {
+    const topN = moves.slice(0, Math.min(cfg.randomTop, moves.length));
+    const pick = topN[Math.floor(Math.random() * topN.length)];
+    return pick;
+  }
+
+  let bestMove: BotMove | null = null;
+  let bestScore = Infinity;
+  for (const m of moves) {
+    const { board: nb, cr: ncr, ep: nep } = applyMove(board, cr, ep, m);
+    const noise = cfg.noise > 0 ? (Math.random() - 0.5) * cfg.noise : 0;
+    const score = minimax(nb, ncr, nep, cfg.depth - 1, -Infinity, Infinity, true) + noise;
+    if (score < bestScore) { bestScore = score; bestMove = m; }
+  }
+  return bestMove;
+}
+
+// ─── Экран выбора сложности ────────────────────────────────────────────────────
+const LEVELS = [
+  { id: 1, name: "Новичок",   desc: "Случайные ходы. Идеально для первого знакомства.", icon: "🌱", color: "#5a9a5a" },
+  { id: 2, name: "Любитель",  desc: "Простые тактики, иногда зевает фигуры.", icon: "📚", color: "#7a9a3a" },
+  { id: 3, name: "Опытный",   desc: "Понимает позицию, использует тактику.", icon: "⚔️", color: "#c9a227" },
+  { id: 4, name: "Эксперт",   desc: "Глубокий расчёт, крепкая защита.", icon: "🏆", color: "#d07030" },
+  { id: 5, name: "Мастер",    desc: "Анализирует на несколько ходов вперёд. Нужны реальные знания.", icon: "👑", color: "#c03030" },
+];
+
+function LevelSelect({ onSelect }: { onSelect: (level: number) => void }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "28px", padding: "20px 0" }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontFamily: "var(--font-cormorant)", fontSize: "clamp(28px,4vw,42px)", fontWeight: 600, color: "var(--gold-light)", marginBottom: "8px" }}>
+          Игра против бота
+        </div>
+        <div style={{ fontSize: "15px", color: "var(--text-secondary)" }}>Выберите уровень сложности</div>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px", width: "100%", maxWidth: "480px" }}>
+        {LEVELS.map(lvl => (
+          <button
+            key={lvl.id}
+            onClick={() => onSelect(lvl.id)}
+            style={{
+              display: "flex", alignItems: "center", gap: "16px",
+              padding: "16px 20px",
+              background: "linear-gradient(135deg, rgba(45,26,10,0.9), rgba(26,14,5,0.95))",
+              border: `1px solid rgba(${lvl.id === 5 ? "192,48,48" : "107,61,26"},0.5)`,
+              borderRadius: "8px", cursor: "pointer",
+              transition: "all 0.2s", textAlign: "left",
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLButtonElement).style.borderColor = lvl.color;
+              (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 4px 20px ${lvl.color}33`;
+              (e.currentTarget as HTMLButtonElement).style.transform = "translateX(4px)";
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLButtonElement).style.borderColor = `rgba(${lvl.id === 5 ? "192,48,48" : "107,61,26"},0.5)`;
+              (e.currentTarget as HTMLButtonElement).style.boxShadow = "none";
+              (e.currentTarget as HTMLButtonElement).style.transform = "translateX(0)";
+            }}
+          >
+            <span style={{ fontSize: "28px", flexShrink: 0 }}>{lvl.icon}</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: "var(--font-cormorant)", fontSize: "20px", fontWeight: 600, color: lvl.color, marginBottom: "2px" }}>
+                {lvl.id}. {lvl.name}
+              </div>
+              <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>{lvl.desc}</div>
+            </div>
+            <Icon name="ChevronRight" size={18} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface PromotionState { row: number; col: number; color: "white" | "black"; board: string[][]; cr: CastleRights; ep: [number, number] | null; }
 
-function ChessBoard() {
+function ChessBoard({ level, onBack }: { level: number; onBack: () => void }) {
   const [selected, setSelected] = useState<[number, number] | null>(null);
   const [legalMoves, setLegalMoves] = useState<[number, number][]>([]);
   const [board, setBoard] = useState(INITIAL_BOARD.map(r => [...r]));
@@ -256,6 +522,9 @@ function ChessBoard() {
   const [enPassant, setEnPassant] = useState<[number, number] | null>(null);
   const [promotion, setPromotion] = useState<PromotionState | null>(null);
   const [alert, setAlert] = useState<{ msg: string; type: "error" | "check" } | null>(null);
+  const [botThinking, setBotThinking] = useState(false);
+  const [gameOver, setGameOver] = useState<string | null>(null);
+  const botTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isWhitePiece = (p: string) => p !== "" && p === p.toUpperCase();
   const isBlackPiece = (p: string) => p !== "" && p === p.toLowerCase();
@@ -281,9 +550,17 @@ function ChessBoard() {
   };
 
   const finishMove = (newBoard: string[][], cr: CastleRights, newEP: [number, number] | null, nextTurn: "white" | "black") => {
-    // Проверяем шах после хода
     const kingPos = findKing(newBoard, nextTurn === "white");
-    if (kingPos && isSquareAttacked(newBoard, kingPos[0], kingPos[1], nextTurn !== "white")) {
+    const inCheck = kingPos && isSquareAttacked(newBoard, kingPos[0], kingPos[1], nextTurn !== "white");
+    // Проверяем мат/пат
+    const nextMoves = getAllMoves(newBoard, cr, newEP, nextTurn === "white");
+    if (nextMoves.length === 0) {
+      if (inCheck) {
+        setGameOver(nextTurn === "white" ? "Мат! Чёрные победили 🏆" : "Мат! Белые победили 🏆");
+      } else {
+        setGameOver("Пат! Ничья 🤝");
+      }
+    } else if (inCheck) {
       showAlert("Шах! Король под ударом — нужно защититься", "check");
     }
     setBoard(newBoard);
@@ -293,6 +570,21 @@ function ChessBoard() {
     setLegalMoves([]);
     setTurn(nextTurn);
   };
+
+  // Ход бота
+  useEffect(() => {
+    if (turn !== "black" || gameOver || promotion) return;
+    setBotThinking(true);
+    const delay = level >= 4 ? 600 : 300;
+    botTimerRef.current = setTimeout(() => {
+      const move = getBotMove(board, castleRights, enPassant, level);
+      if (!move) { setBotThinking(false); return; }
+      const { board: nb, cr: ncr, ep: nep } = applyMove(board, castleRights, enPassant, move);
+      setBotThinking(false);
+      finishMove(nb, ncr, nep, "white");
+    }, delay);
+    return () => { if (botTimerRef.current) clearTimeout(botTimerRef.current); };
+  }, [turn, gameOver, promotion]); // eslint-disable-line
 
   const handlePromotion = (piece: string) => {
     if (!promotion) return;
@@ -382,13 +674,24 @@ function ChessBoard() {
     finishMove(newBoard, cr, newEP, turn === "white" ? "black" : "white");
   };
 
+  const levelInfo = LEVELS[level - 1];
   const CELL = 52;
   const BOARD = CELL * 8;
 
   return (
     <div className="flex flex-col items-center gap-4">
-      <div className="text-sm font-golos tracking-widest uppercase" style={{ color: "var(--gold-light)" }}>
-        Ход: {turn === "white" ? "Белые ♔" : "Чёрные ♚"}
+      {/* Шапка игры */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: BOARD + 22, gap: "12px" }}>
+        <button onClick={onBack} className="wood-btn-sm" style={{ gap: "6px" }}>
+          <Icon name="ChevronLeft" size={14} /> Уровни
+        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", fontFamily: "var(--font-golos)", fontSize: "13px" }}>
+          <span style={{ color: "var(--gold-muted)" }}>Бот:</span>
+          <span style={{ color: levelInfo.color, fontWeight: 600 }}>{levelInfo.icon} {levelInfo.name}</span>
+        </div>
+        <div style={{ fontSize: "13px", color: gameOver ? "var(--gold)" : turn === "white" ? "var(--cream)" : "var(--text-secondary)", fontWeight: 600, fontFamily: "var(--font-golos)" }}>
+          {gameOver ? "Игра окончена" : botThinking ? "Думает..." : turn === "white" ? "Ваш ход ♔" : "Ход бота ♚"}
+        </div>
       </div>
       <div style={{ display: "flex", alignItems: "flex-start", gap: "4px" }}>
         <div style={{ display: "flex", flexDirection: "column", height: BOARD, paddingBottom: "0" }}>
@@ -514,15 +817,42 @@ function ChessBoard() {
 
       <div style={{ display: "flex", gap: "12px" }}>
         <button
-          onClick={() => { setBoard(INITIAL_BOARD.map(r => [...r])); setSelected(null); setLegalMoves([]); setTurn("white"); setCastleRights({ wK: true, wQ: true, bK: true, bQ: true }); setEnPassant(null); setPromotion(null); setAlert(null); }}
+          onClick={() => { setBoard(INITIAL_BOARD.map(r => [...r])); setSelected(null); setLegalMoves([]); setTurn("white"); setCastleRights({ wK: true, wQ: true, bK: true, bQ: true }); setEnPassant(null); setPromotion(null); setAlert(null); setGameOver(null); setBotThinking(false); if (botTimerRef.current) clearTimeout(botTimerRef.current); }}
           className="wood-btn-sm"
         >
-          <Icon name="RotateCcw" size={14} /> Сбросить
-        </button>
-        <button className="wood-btn-sm">
-          <Icon name="BarChart2" size={14} /> Анализ
+          <Icon name="RotateCcw" size={14} /> Новая партия
         </button>
       </div>
+
+      {/* Оверлей конца игры */}
+      {gameOver && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 999,
+          background: "rgba(0,0,0,0.7)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <div style={{
+            background: "linear-gradient(135deg, #2d1a0a, #1a0e05)",
+            border: "2px solid var(--gold-dark)",
+            borderRadius: "12px",
+            padding: "40px 48px",
+            textAlign: "center",
+            boxShadow: "0 20px 60px rgba(0,0,0,0.8)",
+            display: "flex", flexDirection: "column", gap: "20px", alignItems: "center",
+          }}>
+            <div style={{ fontSize: "52px" }}>{gameOver.includes("Белые") ? "♔" : gameOver.includes("Чёрные") ? "♚" : "🤝"}</div>
+            <div style={{ fontFamily: "var(--font-cormorant)", fontSize: "28px", fontWeight: 700, color: "var(--gold-light)" }}>{gameOver}</div>
+            <div style={{ display: "flex", gap: "12px" }}>
+              <button className="wood-btn" onClick={() => { setBoard(INITIAL_BOARD.map(r => [...r])); setSelected(null); setLegalMoves([]); setTurn("white"); setCastleRights({ wK: true, wQ: true, bK: true, bQ: true }); setEnPassant(null); setPromotion(null); setAlert(null); setGameOver(null); setBotThinking(false); }}>
+                <Icon name="RotateCcw" size={16} /> Новая партия
+              </button>
+              <button className="wood-btn-outline" onClick={onBack}>
+                <Icon name="ChevronLeft" size={16} /> Сменить уровень
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Модальное окно превращения пешки */}
       {promotion && (() => {
@@ -601,6 +931,7 @@ export default function Index() {
   const [active, setActive] = useState<Section>("home");
   const [expandedRule, setExpandedRule] = useState<number | null>(null);
   const [selectedGame, setSelectedGame] = useState<number | null>(null);
+  const [gameLevel, setGameLevel] = useState<number | null>(null);
 
   const navItems: { id: Section; label: string; icon: string }[] = [
     { id: "home", label: "Главная", icon: "Home" },
@@ -665,7 +996,7 @@ export default function Index() {
                 </div>
               </div>
               <div className="hero-board-preview">
-                <ChessBoard />
+                <ChessBoard level={3} onBack={() => {}} />
               </div>
             </div>
 
@@ -695,55 +1026,13 @@ export default function Index() {
               <h2 className="page-title">Игра</h2>
               <div className="gold-line" />
             </div>
-            <div className="game-layout">
-              <div className="game-board-wrap">
-                <ChessBoard />
+            {gameLevel === null ? (
+              <LevelSelect onSelect={lvl => setGameLevel(lvl)} />
+            ) : (
+              <div style={{ display: "flex", justifyContent: "center" }}>
+                <ChessBoard level={gameLevel} onBack={() => setGameLevel(null)} />
               </div>
-              <div className="game-sidebar">
-                <div className="sidebar-card">
-                  <h3 className="sidebar-title">Текущая партия</h3>
-                  <div className="player-row">
-                    <span className="player-piece black-piece">♚</span>
-                    <div>
-                      <div className="player-name">Чёрные</div>
-                      <div className="player-rating">Рейтинг: 1824</div>
-                    </div>
-                  </div>
-                  <div className="vs-divider">— vs —</div>
-                  <div className="player-row">
-                    <span className="player-piece white-piece">♔</span>
-                    <div>
-                      <div className="player-name">Белые (Вы)</div>
-                      <div className="player-rating">Рейтинг: 1847</div>
-                    </div>
-                  </div>
-                </div>
-                <div className="sidebar-card">
-                  <h3 className="sidebar-title">Журнал ходов</h3>
-                  <div className="moves-log">
-                    {[["e4","e5"],["Кf3","Кc6"],["Сb5","a6"]].map(([w,b], i) => (
-                      <div key={i} className="move-row">
-                        <span className="move-num">{i+1}.</span>
-                        <span className="move">{w}</span>
-                        <span className="move">{b}</span>
-                      </div>
-                    ))}
-                    <div className="move-row">
-                      <span className="move-num">4.</span>
-                      <span style={{ color: "var(--gold-muted)", fontStyle: "italic" }}>— ожидание хода</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="sidebar-card hint-card">
-                  <div className="hint-header">
-                    <Icon name="Lightbulb" size={16} />
-                    <span>Лучший ход</span>
-                  </div>
-                  <div className="hint-move">Сa4</div>
-                  <div className="hint-desc">Испанская партия. Продолжение атаки на пункт e5.</div>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         )}
 
