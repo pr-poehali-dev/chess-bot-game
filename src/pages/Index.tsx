@@ -178,6 +178,73 @@ function getLegalMoves(
   return moves;
 }
 
+// Находит позицию короля заданного цвета
+function findKing(board: string[][], isWhite: boolean): [number, number] | null {
+  const king = isWhite ? "K" : "k";
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++)
+      if (board[r][c] === king) return [r, c];
+  return null;
+}
+
+// Проверяет, атакована ли клетка противником
+function isSquareAttacked(board: string[][], row: number, col: number, byWhite: boolean): boolean {
+  const isW = (p: string) => p !== "" && p === p.toUpperCase();
+  const isB = (p: string) => p !== "" && p === p.toLowerCase();
+  const isEnemy = byWhite ? isW : isB;
+
+  // Проверяем атаку по направлениям (ладья/ферзь)
+  for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+    let r = row+dr, c = col+dc;
+    while (r>=0&&r<8&&c>=0&&c<8) {
+      const p = board[r][c];
+      if (p) { if (isEnemy(p) && (p.toLowerCase()==="r"||p.toLowerCase()==="q")) return true; break; }
+      r+=dr; c+=dc;
+    }
+  }
+  // Диагонали (слон/ферзь)
+  for (const [dr, dc] of [[-1,-1],[-1,1],[1,-1],[1,1]]) {
+    let r = row+dr, c = col+dc;
+    while (r>=0&&r<8&&c>=0&&c<8) {
+      const p = board[r][c];
+      if (p) { if (isEnemy(p) && (p.toLowerCase()==="b"||p.toLowerCase()==="q")) return true; break; }
+      r+=dr; c+=dc;
+    }
+  }
+  // Конь
+  for (const [dr,dc] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]) {
+    const r=row+dr, c=col+dc;
+    if (r>=0&&r<8&&c>=0&&c<8&&isEnemy(board[r][c])&&board[r][c].toLowerCase()==="n") return true;
+  }
+  // Король
+  for (const [dr,dc] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]) {
+    const r=row+dr, c=col+dc;
+    if (r>=0&&r<8&&c>=0&&c<8&&isEnemy(board[r][c])&&board[r][c].toLowerCase()==="k") return true;
+  }
+  // Пешка
+  const pawnDir = byWhite ? 1 : -1;
+  for (const dc of [-1,1]) {
+    const r=row+pawnDir, c=col+dc;
+    if (r>=0&&r<8&&c>=0&&c<8&&isEnemy(board[r][c])&&board[r][c].toLowerCase()==="p") return true;
+  }
+  return false;
+}
+
+// Проверяет, находится ли король под шахом после хода
+function isInCheckAfterMove(board: string[][], sr: number, sc: number, dr: number, dc: number, turn: "white" | "black"): boolean {
+  const sim = board.map(r => [...r]);
+  sim[dr][dc] = sim[sr][sc];
+  sim[sr][sc] = "";
+  const kingPos = findKing(sim, turn === "white");
+  if (!kingPos) return false;
+  return isSquareAttacked(sim, kingPos[0], kingPos[1], turn !== "white");
+}
+
+// Проверяет, атакована ли рокировочная клетка
+function castlePathSafe(board: string[][], row: number, cols: number[], byWhite: boolean): boolean {
+  return cols.every(c => !isSquareAttacked(board, row, c, byWhite));
+}
+
 interface PromotionState { row: number; col: number; color: "white" | "black"; board: string[][]; cr: CastleRights; ep: [number, number] | null; }
 
 function ChessBoard() {
@@ -188,11 +255,37 @@ function ChessBoard() {
   const [castleRights, setCastleRights] = useState<CastleRights>({ wK: true, wQ: true, bK: true, bQ: true });
   const [enPassant, setEnPassant] = useState<[number, number] | null>(null);
   const [promotion, setPromotion] = useState<PromotionState | null>(null);
+  const [alert, setAlert] = useState<{ msg: string; type: "error" | "check" } | null>(null);
 
   const isWhitePiece = (p: string) => p !== "" && p === p.toUpperCase();
   const isBlackPiece = (p: string) => p !== "" && p === p.toLowerCase();
 
+  const showAlert = (msg: string, type: "error" | "check" = "error") => {
+    setAlert({ msg, type });
+    setTimeout(() => setAlert(null), 2800);
+  };
+
+  // Фильтрует ходы, оставляющие короля под шахом, и запрещает рокировку через атакованные поля
+  const getSafeMoves = (b: string[][], row: number, col: number, cr: CastleRights, ep: [number, number] | null): [number, number][] => {
+    const raw = getLegalMoves(b, row, col, cr, ep);
+    const piece = b[row][col];
+    return raw.filter(([dr, dc]) => {
+      // Рокировка: проверяем, что король не проходит через шах и не стоит под шахом
+      if (piece.toLowerCase() === "k" && Math.abs(dc - col) === 2) {
+        const isWhite = turn === "white";
+        const passCol = dc === 6 ? [col, 5, 6] : [col, 3, 2];
+        if (!castlePathSafe(b, row, passCol, !isWhite)) return false;
+      }
+      return !isInCheckAfterMove(b, row, col, dr, dc, turn);
+    });
+  };
+
   const finishMove = (newBoard: string[][], cr: CastleRights, newEP: [number, number] | null, nextTurn: "white" | "black") => {
+    // Проверяем шах после хода
+    const kingPos = findKing(newBoard, nextTurn === "white");
+    if (kingPos && isSquareAttacked(newBoard, kingPos[0], kingPos[1], nextTurn !== "white")) {
+      showAlert("Шах! Король под ударом — нужно защититься", "check");
+    }
     setBoard(newBoard);
     setCastleRights(cr);
     setEnPassant(newEP);
@@ -215,7 +308,7 @@ function ChessBoard() {
     if (!selected) {
       if ((turn === "white" && isWhitePiece(piece)) || (turn === "black" && isBlackPiece(piece))) {
         setSelected([row, col]);
-        setLegalMoves(getLegalMoves(board, row, col, castleRights, enPassant));
+        setLegalMoves(getSafeMoves(board, row, col, castleRights, enPassant));
       }
       return;
     }
@@ -225,11 +318,27 @@ function ChessBoard() {
     const dstPiece = board[row][col];
     if ((turn === "white" && isWhitePiece(dstPiece)) || (turn === "black" && isBlackPiece(dstPiece))) {
       setSelected([row, col]);
-      setLegalMoves(getLegalMoves(board, row, col, castleRights, enPassant));
+      setLegalMoves(getSafeMoves(board, row, col, castleRights, enPassant));
       return;
     }
     const isLegal = legalMoves.some(([r, c]) => r === row && c === col);
-    if (!isLegal) { setSelected(null); setLegalMoves([]); return; }
+    if (!isLegal) {
+      // Объясняем причину
+      const rawMoves = getLegalMoves(board, row, col, castleRights, enPassant);
+      const wouldBeInRaw = rawMoves.some(([r, c]) => r === row && c === col);
+      const kingPos = findKing(board, turn === "white");
+      const inCheck = kingPos && isSquareAttacked(board, kingPos[0], kingPos[1], turn !== "white");
+      if (inCheck && wouldBeInRaw) {
+        showAlert("Невозможный ход — король останется под шахом", "error");
+      } else if (inCheck) {
+        showAlert("Невозможный ход — необходимо защитить короля от шаха", "error");
+      } else if (wouldBeInRaw) {
+        showAlert("Невозможный ход — король окажется под шахом", "error");
+      } else {
+        showAlert("Невозможный ход — фигура так не ходит", "error");
+      }
+      setSelected(null); setLegalMoves([]); return;
+    }
 
     const newBoard = board.map(r => [...r]);
     newBoard[row][col] = srcPiece;
@@ -371,9 +480,41 @@ function ChessBoard() {
           </div>
         </div>
       </div>
+      {/* Уведомление */}
+      <div style={{
+        height: "40px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: BOARD + 22,
+      }}>
+        {alert && (
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "8px 18px",
+            borderRadius: "6px",
+            background: alert.type === "check"
+              ? "linear-gradient(135deg, rgba(180,100,20,0.95), rgba(140,70,10,0.95))"
+              : "linear-gradient(135deg, rgba(160,40,40,0.95), rgba(120,20,20,0.95))",
+            border: `1px solid ${alert.type === "check" ? "rgba(220,160,50,0.6)" : "rgba(200,60,60,0.5)"}`,
+            boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
+            fontFamily: "var(--font-golos)",
+            fontSize: "13px",
+            color: alert.type === "check" ? "#ffe0a0" : "#ffc0c0",
+            animation: "fade-in 0.2s ease-out",
+            whiteSpace: "nowrap",
+          }}>
+            <span style={{ fontSize: "16px" }}>{alert.type === "check" ? "⚠️" : "🚫"}</span>
+            {alert.msg}
+          </div>
+        )}
+      </div>
+
       <div style={{ display: "flex", gap: "12px" }}>
         <button
-          onClick={() => { setBoard(INITIAL_BOARD.map(r => [...r])); setSelected(null); setLegalMoves([]); setTurn("white"); setCastleRights({ wK: true, wQ: true, bK: true, bQ: true }); setEnPassant(null); setPromotion(null); }}
+          onClick={() => { setBoard(INITIAL_BOARD.map(r => [...r])); setSelected(null); setLegalMoves([]); setTurn("white"); setCastleRights({ wK: true, wQ: true, bK: true, bQ: true }); setEnPassant(null); setPromotion(null); setAlert(null); }}
           className="wood-btn-sm"
         >
           <Icon name="RotateCcw" size={14} /> Сбросить
