@@ -64,6 +64,127 @@ const LESSONS = [
   { id: 6, title: "Атака на короля", level: "Продвинутый", duration: "40 мин", icon: "Swords", desc: "Жертвы и комбинации при атаке на короля противника." },
 ];
 
+const DEBUT_LESSON = {
+  title: "Основы дебюта",
+  intro: "Дебют — это первые 10–15 ходов партии. Именно здесь закладывается фундамент всей игры. Три главных принципа дебюта помогут вам не уступить сопернику уже с первых ходов.",
+  principles: [
+    {
+      num: "01",
+      title: "Контролируйте центр",
+      icon: "Target",
+      color: "#c9a227",
+      text: "Центр доски (клетки e4, e5, d4, d5) — самые важные поля. Фигуры в центре контролируют больше клеток и быстрее перебрасываются на любой фланг. Начинайте с хода пешкой на e4 или d4 — это сразу захватывает центр.",
+      tip: "Лучшие первые ходы: 1.e4 или 1.d4 за белых, 1...e5 или 1...d5 за чёрных.",
+      board: [
+        ["r","n","b","q","k","b","n","r"],
+        ["p","p","p","p","","p","p","p"],
+        ["","","","","","","",""],
+        ["","","","","p","","",""],
+        ["","","","","P","","",""],
+        ["","","","","","","",""],
+        ["P","P","P","P","","P","P","P"],
+        ["R","N","B","Q","K","B","N","R"],
+      ],
+      highlight: [[3,4],[4,4],[3,3],[4,3]],
+    },
+    {
+      num: "02",
+      title: "Развивайте фигуры",
+      icon: "Zap",
+      color: "#7abf7a",
+      text: "Каждый ход в дебюте должен вводить в игру новую фигуру. Кони и слоны должны выйти с исходных позиций как можно раньше. Не ходите одной фигурой дважды без крайней необходимости — это потеря темпа.",
+      tip: "Правило: к 5-му ходу оба коня и хотя бы один слон должны быть развиты.",
+      board: [
+        ["r","","b","q","k","b","","r"],
+        ["p","p","p","p","","p","p","p"],
+        ["","","n","","","n","",""],
+        ["","","","","p","","",""],
+        ["","","","","P","","",""],
+        ["","","N","","","N","",""],
+        ["P","P","P","P","","P","P","P"],
+        ["R","","B","Q","K","B","","R"],
+      ],
+      highlight: [[2,2],[2,5],[5,2],[5,5]],
+    },
+    {
+      num: "03",
+      title: "Сделайте рокировку",
+      icon: "Shield",
+      color: "#7ab0df",
+      text: "Рокировка — важнейший ход в дебюте. Она одновременно прячет короля в безопасное место и активирует ладью. Старайтесь сделать рокировку в первые 10 ходов. Король в центре в миттельшпиле — мишень для атаки.",
+      tip: "Для рокировки: освободите поля между королём и ладьёй (выведите коня и слона).",
+      board: [
+        ["r","","b","q","","r","k",""],
+        ["p","p","p","p","","p","p","p"],
+        ["","","n","","","n","",""],
+        ["","","","","p","","",""],
+        ["","","","","P","","",""],
+        ["","","N","","","N","",""],
+        ["P","P","P","P","","P","P","P"],
+        ["R","","B","Q","","R","K",""],
+      ],
+      highlight: [[0,6],[7,6]],
+    },
+    {
+      num: "04",
+      title: "Не выводите ферзя рано",
+      icon: "AlertTriangle",
+      color: "#e08080",
+      text: "Ферзь — самая сильная фигура, но в дебюте он легко теряет темп под атаками. Соперник будет гонять его по всей доске, пока сам развивает фигуры. Выводите ферзя только после того, как развили коней и слонов.",
+      tip: "Исключение: некоторые дебютные системы допускают ранний выход ферзя, но это требует точной игры.",
+      board: [
+        ["r","n","b","","k","b","n","r"],
+        ["p","p","p","p","","p","p","p"],
+        ["","","","","","","",""],
+        ["","","","","p","","",""],
+        ["","","","","P","q","",""],
+        ["","","","","","","",""],
+        ["P","P","P","P","","P","P","P"],
+        ["R","N","B","Q","K","B","N","R"],
+      ],
+      highlight: [[4,5]],
+    },
+    {
+      num: "05",
+      title: "Не ходите пешками без нужды",
+      icon: "XCircle",
+      color: "#c9a227",
+      text: "Лишние пешечные ходы в дебюте — потеря времени. Каждый пешечный ход, не связанный с захватом центра или развитием, даёт сопернику лишний темп. Двигайте только те пешки, которые открывают дорогу фигурам.",
+      tip: "Хорошо: e4, d4, c3, b3 — помогают развитию. Плохо: a3, h3 в самом начале — просто потеря хода.",
+      board: [
+        ["r","n","b","q","k","b","n","r"],
+        ["","p","p","p","","p","p",""],
+        ["p","","","","","","","p"],
+        ["","","","","p","","",""],
+        ["","","","","P","","",""],
+        ["P","","","","","","","P"],
+        ["","P","P","P","","P","P",""],
+        ["R","N","B","Q","K","B","N","R"],
+      ],
+      highlight: [[2,0],[2,7],[5,0],[5,7]],
+    },
+    {
+      num: "06",
+      title: "Популярные дебюты для начинающих",
+      icon: "BookOpen",
+      color: "#b07ab0",
+      text: "Итальянская партия (1.e4 e5 2.Кf3 Кc6 3.Сc4): простой и эффективный дебют. Белые быстро развиваются и готовятся к рокировке. Лондонская система (1.d4 2.Кf3 3.Сf4): надёжный дебют с ясным планом — контроль центра и спокойное развитие.",
+      tip: "Совет: выучите один дебют за белых и один за чёрных. Не пытайтесь запомнить всё сразу.",
+      board: [
+        ["r","","b","q","k","b","","r"],
+        ["p","p","p","p","","p","p","p"],
+        ["","","n","","","n","",""],
+        ["","","","","p","","",""],
+        ["","","B","","P","","",""],
+        ["","","","","","N","",""],
+        ["P","P","P","P","","P","P","P"],
+        ["R","N","B","Q","K","","","R"],
+      ],
+      highlight: [[4,2],[5,5],[0,4],[7,4]],
+    },
+  ],
+};
+
 const STATS = {
   total: 142,
   wins: 89,
@@ -243,6 +364,179 @@ function isInCheckAfterMove(board: string[][], sr: number, sc: number, dr: numbe
 // Проверяет, атакована ли рокировочная клетка
 function castlePathSafe(board: string[][], row: number, cols: number[], byWhite: boolean): boolean {
   return cols.every(c => !isSquareAttacked(board, row, c, byWhite));
+}
+
+// ─── Компонент урока «Основы дебюта» ──────────────────────────────────────────
+function DebutLesson({ onBack }: { onBack: () => void }) {
+  const [step, setStep] = useState(0);
+  const principle = DEBUT_LESSON.principles[step];
+  const total = DEBUT_LESSON.principles.length;
+  const CELL = 44;
+
+  const isW = (p: string) => p !== "" && p === p.toUpperCase();
+
+  return (
+    <div style={{ maxWidth: 860, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24 }}>
+      {/* Шапка */}
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <button className="wood-btn-sm" onClick={onBack}>
+          <Icon name="ChevronLeft" size={14} /> Назад
+        </button>
+        <div>
+          <div style={{ fontFamily: "var(--font-cormorant)", fontSize: 28, fontWeight: 600, color: "var(--gold-light)" }}>
+            Основы дебюта
+          </div>
+          <div style={{ fontSize: 12, color: "var(--gold-muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+            Урок для начинающих · 6 принципов
+          </div>
+        </div>
+      </div>
+
+      {/* Прогресс */}
+      <div style={{ display: "flex", gap: 6 }}>
+        {DEBUT_LESSON.principles.map((_, i) => (
+          <button
+            key={i}
+            onClick={() => setStep(i)}
+            style={{
+              flex: 1, height: 4, borderRadius: 2, border: "none", cursor: "pointer",
+              background: i === step ? "var(--gold)" : i < step ? "var(--gold-dark)" : "var(--wood-border)",
+              transition: "background 0.2s",
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Контент принципа */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "1fr auto",
+        gap: 32,
+        alignItems: "start",
+        background: "linear-gradient(135deg, rgba(45,26,10,0.85), rgba(26,14,5,0.95))",
+        border: "1px solid var(--wood-border)",
+        borderRadius: 10,
+        padding: 28,
+      }}>
+        {/* Текст */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: "50%",
+              background: `${principle.color}22`,
+              border: `1px solid ${principle.color}55`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              color: principle.color, flexShrink: 0,
+            }}>
+              <Icon name={principle.icon} size={20} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: "var(--gold-muted)", letterSpacing: "0.15em", textTransform: "uppercase" }}>
+                Принцип {principle.num}
+              </div>
+              <div style={{ fontFamily: "var(--font-cormorant)", fontSize: 24, fontWeight: 600, color: principle.color, lineHeight: 1.1 }}>
+                {principle.title}
+              </div>
+            </div>
+          </div>
+
+          <p style={{ fontSize: 15, lineHeight: 1.75, color: "var(--text-secondary)", margin: 0 }}>
+            {principle.text}
+          </p>
+
+          <div style={{
+            display: "flex", gap: 10, padding: "12px 16px",
+            background: `${principle.color}10`,
+            border: `1px solid ${principle.color}30`,
+            borderRadius: 6,
+          }}>
+            <span style={{ fontSize: 16, flexShrink: 0 }}>💡</span>
+            <span style={{ fontSize: 13, color: "var(--cream)", lineHeight: 1.6 }}>{principle.tip}</span>
+          </div>
+        </div>
+
+        {/* Мини-доска */}
+        <div style={{ flexShrink: 0 }}>
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(8, ${CELL}px)`,
+            gridTemplateRows: `repeat(8, ${CELL}px)`,
+            border: "2px solid var(--wood-border)",
+            borderRadius: 4,
+            overflow: "hidden",
+            boxShadow: "0 6px 24px rgba(0,0,0,0.5)",
+          }}>
+            {principle.board.map((row: string[], ri: number) =>
+              row.map((piece: string, ci: number) => {
+                const light = (ri + ci) % 2 === 0;
+                const isHighlighted = principle.highlight.some(([hr, hc]: number[]) => hr === ri && hc === ci);
+                return (
+                  <div
+                    key={`${ri}-${ci}`}
+                    style={{
+                      width: CELL, height: CELL,
+                      background: isHighlighted
+                        ? "rgba(201,162,39,0.45)"
+                        : light ? "var(--cell-light)" : "var(--cell-dark)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      position: "relative",
+                    }}
+                  >
+                    {isHighlighted && (
+                      <div style={{
+                        position: "absolute", inset: 0,
+                        border: "2px solid rgba(201,162,39,0.8)",
+                        pointerEvents: "none",
+                      }} />
+                    )}
+                    {piece && (
+                      <span style={{
+                        fontSize: 26, lineHeight: 1, userSelect: "none",
+                        color: isW(piece) ? "#f5e6c8" : "#1a0e05",
+                        filter: isW(piece) ? "drop-shadow(0 1px 2px rgba(0,0,0,0.9))" : "drop-shadow(0 1px 1px rgba(0,0,0,0.3))",
+                        position: "relative", zIndex: 1,
+                      }}>
+                        {PIECES[piece]}
+                      </span>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--gold-muted)", textAlign: "center", marginTop: 6 }}>
+            Выделены ключевые поля
+          </div>
+        </div>
+      </div>
+
+      {/* Навигация */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <button
+          className="wood-btn-sm"
+          onClick={() => setStep(s => Math.max(0, s - 1))}
+          style={{ opacity: step === 0 ? 0.4 : 1 }}
+          disabled={step === 0}
+        >
+          <Icon name="ChevronLeft" size={14} /> Назад
+        </button>
+
+        <div style={{ fontFamily: "var(--font-golos)", fontSize: 13, color: "var(--gold-muted)" }}>
+          {step + 1} / {total}
+        </div>
+
+        {step < total - 1 ? (
+          <button className="wood-btn" onClick={() => setStep(s => s + 1)}>
+            Следующий принцип <Icon name="ChevronRight" size={16} />
+          </button>
+        ) : (
+          <button className="wood-btn" onClick={onBack}>
+            <Icon name="Check" size={16} /> Урок завершён!
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ─── Движок бота ─────────────────────────────────────────────────────��────────
@@ -932,6 +1226,7 @@ export default function Index() {
   const [expandedRule, setExpandedRule] = useState<number | null>(null);
   const [selectedGame, setSelectedGame] = useState<number | null>(null);
   const [gameLevel, setGameLevel] = useState<number | null>(null);
+  const [openLesson, setOpenLesson] = useState<number | null>(null);
 
   const navItems: { id: Section; label: string; icon: string }[] = [
     { id: "home", label: "Главная", icon: "Home" },
@@ -1112,34 +1407,44 @@ export default function Index() {
         {/* LESSONS */}
         {active === "lessons" && (
           <div className="section-page">
-            <div className="page-header">
-              <h2 className="page-title">Уроки</h2>
-              <div className="gold-line" />
-            </div>
-            <div className="lessons-grid">
-              {LESSONS.map((lesson) => (
-                <div key={lesson.id} className="lesson-card">
-                  <div className="lesson-icon-wrap">
-                    <Icon name={lesson.icon} size={28} />
-                  </div>
-                  <div className="lesson-body">
-                    <div className="lesson-meta-row">
-                      <span className={`lesson-level ${lesson.level === "Начинающий" ? "level-green" : lesson.level === "Средний" ? "level-gold" : "level-red"}`}>
-                        {lesson.level}
-                      </span>
-                      <span className="lesson-duration">
-                        <Icon name="Clock" size={12} /> {lesson.duration}
-                      </span>
-                    </div>
-                    <h3 className="lesson-title">{lesson.title}</h3>
-                    <p className="lesson-desc">{lesson.desc}</p>
-                    <button className="wood-btn-sm">
-                      <Icon name="Play" size={14} /> Начать урок
-                    </button>
-                  </div>
+            {openLesson === 1 ? (
+              <DebutLesson onBack={() => setOpenLesson(null)} />
+            ) : (
+              <>
+                <div className="page-header">
+                  <h2 className="page-title">Уроки</h2>
+                  <div className="gold-line" />
                 </div>
-              ))}
-            </div>
+                <div className="lessons-grid">
+                  {LESSONS.map((lesson) => (
+                    <div key={lesson.id} className="lesson-card">
+                      <div className="lesson-icon-wrap">
+                        <Icon name={lesson.icon} size={28} />
+                      </div>
+                      <div className="lesson-body">
+                        <div className="lesson-meta-row">
+                          <span className={`lesson-level ${lesson.level === "Начинающий" ? "level-green" : lesson.level === "Средний" ? "level-gold" : "level-red"}`}>
+                            {lesson.level}
+                          </span>
+                          <span className="lesson-duration">
+                            <Icon name="Clock" size={12} /> {lesson.duration}
+                          </span>
+                        </div>
+                        <h3 className="lesson-title">{lesson.title}</h3>
+                        <p className="lesson-desc">{lesson.desc}</p>
+                        <button
+                          className="wood-btn-sm"
+                          onClick={() => lesson.id === 1 ? setOpenLesson(1) : undefined}
+                          style={{ opacity: lesson.id === 1 ? 1 : 0.5, cursor: lesson.id === 1 ? "pointer" : "default" }}
+                        >
+                          <Icon name="Play" size={14} /> {lesson.id === 1 ? "Начать урок" : "Скоро"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
 
